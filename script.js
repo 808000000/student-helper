@@ -2,6 +2,8 @@
 window.addEventListener("DOMContentLoaded", init);
 
 const STORAGE_KEY = "tasks";
+const FILTER_KEY = "tasks_filter";
+let currentFilter = localStorage.getItem(FILTER_KEY) || "all"; // all | active | completed
 
 function init() {
   migrateStorageIfNeeded();
@@ -13,6 +15,10 @@ function setupEventHandlers() {
   const taskInput = document.getElementById("taskInput");
   const taskList = document.getElementById("taskList");
   const addBtn = document.getElementById("addBtn");
+  const filterAllBtn = document.getElementById("filterAll");
+  const filterActiveBtn = document.getElementById("filterActive");
+  const filterCompletedBtn = document.getElementById("filterCompleted");
+  const clearCompletedBtn = document.getElementById("clearCompleted");
 
   if (taskInput) {
     taskInput.addEventListener("keydown", function (e) {
@@ -32,6 +38,7 @@ function setupEventHandlers() {
         e.stopPropagation();
         deleteTask(taskId);
         li.remove();
+        updateRemainingCount();
         return;
       }
 
@@ -39,12 +46,43 @@ function setupEventHandlers() {
       const nowCompleted = !li.classList.contains("completed");
       li.classList.toggle("completed");
       updateTaskStatus(taskId, nowCompleted);
+      updateRemainingCount();
+    });
+
+    // Inline edit on double-click
+    taskList.addEventListener("dblclick", function (e) {
+      const li = e.target.closest("li");
+      if (!li || !taskList.contains(li)) return;
+      const taskId = li.dataset.id;
+      startInlineEdit(li, taskId);
     });
   }
 
   if (addBtn) {
     addBtn.addEventListener("click", addTask);
   }
+
+  // Filters
+  function setFilter(filter) {
+    currentFilter = filter;
+    localStorage.setItem(FILTER_KEY, filter);
+    updateFilterButtonsState();
+    renderAllTasks();
+  }
+  if (filterAllBtn) filterAllBtn.addEventListener("click", function () { setFilter("all"); });
+  if (filterActiveBtn) filterActiveBtn.addEventListener("click", function () { setFilter("active"); });
+  if (filterCompletedBtn) filterCompletedBtn.addEventListener("click", function () { setFilter("completed"); });
+
+  // Clear completed
+  if (clearCompletedBtn) clearCompletedBtn.addEventListener("click", function () {
+    const remaining = getTasks().filter(function (t) { return !t.completed; });
+    setTasks(remaining);
+    renderAllTasks();
+  });
+
+  // Initialize buttons state and counter
+  updateFilterButtonsState();
+  updateRemainingCount();
 }
 
 function getTasks() {
@@ -81,6 +119,7 @@ function addTask() {
   setTasks(tasks);
   renderTask(newTask);
   if (taskInput) taskInput.value = "";
+  updateRemainingCount();
 }
 
 // Render all tasks from storage
@@ -88,14 +127,15 @@ function renderAllTasks() {
   const list = document.getElementById("taskList");
   if (!list) return;
   list.innerHTML = "";
-  getTasks().forEach(renderTask);
+  getFilteredTasks().forEach(renderTask);
+  updateRemainingCount();
 }
 
 // Render a single task
 function renderTask(task) {
   const li = document.createElement("li");
   li.dataset.id = task.id;
-  li.textContent = task.text;
+  li.appendChild(createTaskLabel(task.text));
   if (task.completed) li.classList.add("completed");
 
   const delBtn = document.createElement("button");
@@ -119,4 +159,80 @@ function updateTaskStatus(id, completed) {
 function deleteTask(id) {
   const tasks = getTasks().filter(function (task) { return task.id !== id; });
   setTasks(tasks);
+}
+
+// Helpers for filtering and UI state
+function getFilteredTasks() {
+  const all = getTasks();
+  if (currentFilter === "active") return all.filter(function (t) { return !t.completed; });
+  if (currentFilter === "completed") return all.filter(function (t) { return t.completed; });
+  return all;
+}
+
+function updateRemainingCount() {
+  const el = document.getElementById("remainingCount");
+  if (!el) return;
+  const count = getTasks().filter(function (t) { return !t.completed; }).length;
+  el.textContent = String(count);
+}
+
+function updateFilterButtonsState() {
+  const mapping = {
+    all: document.getElementById("filterAll"),
+    active: document.getElementById("filterActive"),
+    completed: document.getElementById("filterCompleted")
+  };
+  ["all", "active", "completed"].forEach(function (key) {
+    const btn = mapping[key];
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", String(key === currentFilter));
+    btn.classList.toggle("active", key === currentFilter);
+  });
+}
+
+function createTaskLabel(text) {
+  const span = document.createElement("span");
+  span.className = "task-label";
+  span.textContent = text;
+  return span;
+}
+
+function startInlineEdit(li, taskId) {
+  // Avoid duplicate editors
+  if (li.querySelector("input.edit-input")) return;
+  const tasks = getTasks();
+  const task = tasks.find(function (t) { return t.id === taskId; });
+  if (!task) return;
+
+  const label = li.querySelector(".task-label");
+  const originalText = task.text;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "edit-input";
+  input.value = originalText;
+  input.setAttribute("aria-label", "Edit task");
+
+  // Replace label with input
+  if (label) li.replaceChild(input, label);
+  input.focus();
+  input.select();
+
+  function finish(save) {
+    const newText = input.value.trim();
+    const finalText = save && newText !== "" ? newText : originalText;
+    const updated = tasks.map(function (t) {
+      return t.id === taskId ? { id: t.id, text: finalText, completed: t.completed } : t;
+    });
+    setTasks(updated);
+    // Restore label
+    const newLabel = createTaskLabel(finalText);
+    li.replaceChild(newLabel, input);
+  }
+
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") finish(true);
+    if (e.key === "Escape") finish(false);
+  });
+  input.addEventListener("blur", function () { finish(true); });
 }

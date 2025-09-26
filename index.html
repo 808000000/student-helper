@@ -16,6 +16,18 @@
 
   <ul id="taskList" role="list"></ul>
 
+  <div class="controls" aria-label="Task controls">
+    <div class="filters" role="group" aria-label="Filters">
+      <button id="filterAll" type="button" aria-pressed="true">All</button>
+      <button id="filterActive" type="button" aria-pressed="false">Active</button>
+      <button id="filterCompleted" type="button" aria-pressed="false">Completed</button>
+    </div>
+    <div class="right-controls">
+      <span id="remaining" aria-live="polite"><span id="remainingCount">0</span> remaining</span>
+      <button id="clearCompleted" type="button">Clear completed</button>
+    </div>
+  </div>
+
   <script src="script.js"></script>
 </body>
 </html>
